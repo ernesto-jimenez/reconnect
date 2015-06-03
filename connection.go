@@ -11,6 +11,14 @@ type connection interface {
 	Close() error
 }
 
+// Reconnect is returned by New
+type Reconnect interface {
+	// Start inits the reconnect process and blocks until closed or failed
+	Start() error
+	// Close closes the underlying connection
+	Close() error
+}
+
 type reconnect struct {
 	conn    connection
 	opts    Options
@@ -135,7 +143,7 @@ type Options struct {
 }
 
 // New initializes a reconnection struct
-func New(c connection, params ...func(*Options)) *reconnect {
+func New(c connection, params ...func(*Options)) Reconnect {
 	opts := Options{}
 	for _, fn := range params {
 		fn(&opts)
