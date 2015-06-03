@@ -124,13 +124,17 @@ func (s ConnState) String() string {
 
 // Options to manage reconnection
 type Options struct {
-	MaxConnectAttempts  int
+	// Max amount consecutive calls to Connect() returning an error
+	MaxConnectAttempts int
+	// Max amount of errors returned by Wait()
 	MaxConnectionErrors int
-	NotifyError         func(error)
-	NotifyState         func(ConnState)
+	// Optional handler to log errors from Connect() and Wait()
+	NotifyError func(error)
+	// Optional handler to log state changes. It can be used to block reconnection
+	NotifyState func(ConnState)
 }
 
-// New init
+// New initializes a reconnection struct
 func New(c connection, params ...func(*Options)) *reconnect {
 	opts := Options{}
 	for _, fn := range params {
