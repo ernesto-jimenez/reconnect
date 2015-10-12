@@ -144,9 +144,7 @@ func TestStringEvents(t *testing.T) {
 	c.On("Wait").Return(nil).Once()
 	c.On("Wait").Return(err).Once()
 	r := New(c, func(o *Options) {
-		o.NotifyState = func(s ConnState) {
-			s.String()
-		}
+		o.NotifyState = func(s ConnState) {}
 		o.MaxConnectionErrors = 1
 	})
 	r.Start()
