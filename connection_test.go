@@ -28,6 +28,7 @@ func TestCloseClosesUnderlyingConnection(t *testing.T) {
 	c := &mockConnection{}
 	c.On("Close").Return(nil)
 	r := New(c)
+	go r.Start()
 	assert.NoError(t, r.Close())
 	c.AssertCalled(t, "Close")
 }
@@ -37,6 +38,7 @@ func TestCloseReturnsUnderlyingCloseError(t *testing.T) {
 	err := errors.New("fail")
 	c.On("Close").Return(err)
 	r := New(c)
+	go r.Start()
 	assert.Error(t, r.Close())
 }
 
@@ -145,21 +147,19 @@ func TestEventLifecycleClosing(t *testing.T) {
 		close(connected)
 	})
 	c.On("Wait").Return(nil).Once().WaitUntil(closing)
-	c.On("Close").Return(nil).Once()
+	c.On("Close").Return(nil).Once().Run(func(_ mock.Arguments) {
+		close(closing)
+	})
 	e := &lifecycleExpectation{}
 	r := New(c, func(o *Options) {
 		o.NotifyState = e.handler
 		o.MaxConnectionErrors = 1
 	})
-	closed := make(chan time.Time)
 	go func() {
 		r.Start()
-		close(closed)
 	}()
 	<-connected
 	r.Close()
-	close(closing)
-	<-closed
 	e.Assert(t,
 		StateConnecting,
 		StateConnected, StateDisconnected,

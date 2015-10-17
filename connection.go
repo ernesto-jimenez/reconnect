@@ -23,6 +23,7 @@ type reconnect struct {
 	conn    connection
 	opts    Options
 	closing chan struct{}
+	closed  chan struct{}
 }
 
 func (c *reconnect) Start() error {
@@ -36,6 +37,7 @@ func (c *reconnect) Start() error {
 		select {
 		case <-c.closing:
 			notifyState(opts.NotifyState, StateClosed)
+			close(c.closed)
 			return nil
 		default:
 		}
@@ -90,7 +92,9 @@ func notifyState(fn func(ConnState), state ConnState) {
 
 func (c *reconnect) Close() error {
 	close(c.closing)
-	return c.conn.Close()
+	err := c.conn.Close()
+	<-c.closed
+	return err
 }
 
 type closer interface {
@@ -156,6 +160,6 @@ func New(c connection, params ...func(*Options)) Reconnect {
 	for _, fn := range params {
 		fn(&opts)
 	}
-	r := reconnect{conn: c, opts: opts, closing: make(chan struct{})}
+	r := reconnect{conn: c, opts: opts, closing: make(chan struct{}), closed: make(chan struct{})}
 	return &r
 }
