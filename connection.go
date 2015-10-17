@@ -68,7 +68,11 @@ func (c *reconnect) Start() error {
 			notifyState(opts.NotifyState, StateFailed)
 			return err
 		}
-		notifyState(opts.NotifyState, StateReconnecting)
+		select {
+		case <-c.closing:
+		default:
+			notifyState(opts.NotifyState, StateReconnecting)
+		}
 	}
 }
 

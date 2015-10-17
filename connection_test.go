@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 //go:generate mockery -name=connection -inpkg=true
@@ -133,6 +134,36 @@ func TestEventLifecycleFailing(t *testing.T) {
 		StateConnected, StateDisconnected,
 		StateReconnecting, StateConnected,
 		StateFailing, StateFailed,
+	)
+}
+
+func TestEventLifecycleClosing(t *testing.T) {
+	c := &mockConnection{}
+	connected := make(chan time.Time)
+	closing := make(chan time.Time)
+	c.On("Connect").Return(nil).Once().Run(func(_ mock.Arguments) {
+		close(connected)
+	})
+	c.On("Wait").Return(nil).Once().WaitUntil(closing)
+	c.On("Close").Return(nil).Once()
+	e := &lifecycleExpectation{}
+	r := New(c, func(o *Options) {
+		o.NotifyState = e.handler
+		o.MaxConnectionErrors = 1
+	})
+	closed := make(chan time.Time)
+	go func() {
+		r.Start()
+		close(closed)
+	}()
+	<-connected
+	r.Close()
+	close(closing)
+	<-closed
+	e.Assert(t,
+		StateConnecting,
+		StateConnected, StateDisconnected,
+		StateClosed,
 	)
 }
 
