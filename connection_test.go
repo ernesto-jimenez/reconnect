@@ -86,9 +86,10 @@ func TestNotifyErrorsNotifiesConnectErrors(t *testing.T) {
 	err := errors.New("fail")
 	calls := 0
 	c.On("Connect").Return(err).Once()
-	notification := func(err error) {
+	notification := func(err error) error {
 		calls++
 		assert.Error(t, err)
+		return nil
 	}
 	r := New(c, func(o *Options) {
 		o.NotifyError = notification
@@ -104,9 +105,10 @@ func TestNotifyErrorsNotifiesConnectionErrors(t *testing.T) {
 	calls := 0
 	c.On("Connect").Return(nil).Once()
 	c.On("Wait").Return(err).Once()
-	notification := func(err error) {
+	notification := func(err error) error {
 		calls++
 		assert.Error(t, err)
+		return nil
 	}
 	r := New(c, func(o *Options) {
 		o.NotifyError = notification
@@ -114,6 +116,49 @@ func TestNotifyErrorsNotifiesConnectionErrors(t *testing.T) {
 	})
 	assert.Error(t, r.Start())
 	assert.Equal(t, calls, 1)
+}
+
+func TestNotifyErrorsStopsRetriesWhenErrorIsReturnedOnConnection(t *testing.T) {
+	c := &mockConnection{}
+	err := errors.New("fail")
+	calls := 0
+	c.On("Connect").Return(nil).Times(3)
+	c.On("Wait").Return(err).Times(3)
+	notification := func(err error) error {
+		calls++
+		assert.Error(t, err)
+		if calls == 3 {
+			return err
+		}
+		return nil
+	}
+	r := New(c, func(o *Options) {
+		o.NotifyError = notification
+		o.MaxConnectionErrors = 10
+	})
+	assert.Error(t, r.Start())
+	assert.Equal(t, calls, 3)
+}
+
+func TestNotifyErrorsStopsRetriesWhenErrorIsReturnedConnecting(t *testing.T) {
+	c := &mockConnection{}
+	err := errors.New("fail")
+	calls := 0
+	c.On("Connect").Return(err).Times(3)
+	notification := func(err error) error {
+		calls++
+		assert.Error(t, err)
+		if calls == 3 {
+			return err
+		}
+		return nil
+	}
+	r := New(c, func(o *Options) {
+		o.NotifyError = notification
+		o.MaxConnectionErrors = 10
+	})
+	assert.Error(t, r.Start())
+	assert.Equal(t, calls, 3)
 }
 
 func TestEventLifecycleFailing(t *testing.T) {

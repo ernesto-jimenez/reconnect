@@ -31,24 +31,31 @@ func (c *reconnect) Start() error {
 		connectAttempts  int
 		connectionErrors int
 		opts             = c.opts
+		stopErr          error
 	)
+	defer func() {
+		close(c.closed)
+	}()
 	notifyState(opts.NotifyState, StateConnecting)
 	for {
 		select {
 		case <-c.closing:
 			notifyState(opts.NotifyState, StateClosed)
-			close(c.closed)
 			return nil
 		default:
 		}
 		var err error
 		if err = c.conn.Connect(); err != nil {
-			notifyError(opts.NotifyError, err)
+			stopErr = notifyError(opts.NotifyError, err)
 			notifyState(opts.NotifyState, StateFailing)
 			connectAttempts++
 		} else {
 			notifyState(opts.NotifyState, StateConnected)
 			connectAttempts = 0
+		}
+		if stopErr != nil {
+			notifyState(opts.NotifyState, StateFailed)
+			return stopErr
 		}
 		if opts.MaxConnectAttempts > 0 && connectAttempts == opts.MaxConnectAttempts {
 			notifyState(opts.NotifyState, StateFailed)
@@ -59,12 +66,16 @@ func (c *reconnect) Start() error {
 			continue
 		}
 		if err = c.conn.Wait(); err != nil {
-			notifyError(opts.NotifyError, err)
+			stopErr = notifyError(opts.NotifyError, err)
 			notifyState(opts.NotifyState, StateFailing)
 			connectionErrors++
 		} else {
 			notifyState(opts.NotifyState, StateDisconnected)
 			connectionErrors = 0
+		}
+		if stopErr != nil {
+			notifyState(opts.NotifyState, StateFailed)
+			return stopErr
 		}
 		if opts.MaxConnectionErrors > 0 && connectionErrors == opts.MaxConnectionErrors {
 			notifyState(opts.NotifyState, StateFailed)
@@ -78,10 +89,11 @@ func (c *reconnect) Start() error {
 	}
 }
 
-func notifyError(fn func(error), err error) {
+func notifyError(fn func(error) error, err error) error {
 	if fn != nil {
-		fn(err)
+		return fn(err)
 	}
+	return nil
 }
 
 func notifyState(fn func(ConnState), state ConnState) {
@@ -149,7 +161,7 @@ type Options struct {
 	// Max amount of errors returned by Wait()
 	MaxConnectionErrors int
 	// Optional handler to log errors from Connect() and Wait()
-	NotifyError func(error)
+	NotifyError func(error) error
 	// Optional handler to log state changes. It can be used to block reconnection
 	NotifyState func(ConnState)
 }
@@ -160,6 +172,9 @@ func New(c connection, params ...func(*Options)) Reconnect {
 	for _, fn := range params {
 		fn(&opts)
 	}
-	r := reconnect{conn: c, opts: opts, closing: make(chan struct{}), closed: make(chan struct{})}
+	r := reconnect{
+		conn: c, opts: opts,
+		closing: make(chan struct{}), closed: make(chan struct{}),
+	}
 	return &r
 }
